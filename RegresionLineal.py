@@ -7,10 +7,11 @@ Original file is located at
     https://colab.research.google.com/drive/1JuHaWKsdd4TAwQuYc_qMZjlIcQkLFguV
 """
 
-!pip install kaggle
-
-# Predicción de Retrasos de Aerolíneas usando Regresión Lineal
-# Dataset: Airlines Dataset to predict a delay
+# -*- coding: utf-8 -*-
+"""
+RL_AutoMPG.py
+Predicción de consumo de combustible (mpg) con Regresión Lineal
+"""
 
 import pandas as pd
 import numpy as np
@@ -23,286 +24,152 @@ from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 import warnings
 warnings.filterwarnings('ignore')
 
-# Configurar estilo de gráficos
-plt.style.use('default')
-sns.set_palette("husl")
+print("🚗 Predicción de Consumo de Combustible (Auto MPG) con Regresión Lineal")
+print("=" * 70)
 
-print("🛩️ Análisis y Predicción de Retrasos de Aerolíneas")
-print("=" * 50)
-
+# ======================================================
 # 1. CARGAR EL DATASET
-print("\n📊 Cargando dataset...")
-
-# Reemplaza 'ruta_del_archivo.csv' con la ruta real de tu archivo CSV
-# En Colab, puedes subir el archivo y usar: df = pd.read_csv('/content/nombre_archivo.csv')
+# ======================================================
 try:
-    # Ejemplo de rutas comunes en Colab:
-    df = pd.read_csv('./Airlines.csv')  # Si subes el archivo directamente
-    # df = pd.read_csv('Airlines.csv')  # Si está en la carpeta actual
-    print("✅ Dataset cargado exitosamente!")
+    df = pd.read_csv("auto-mpg.csv")  # Asegúrate de tenerlo en la carpeta
+    print("✅ Dataset cargado correctamente")
 except FileNotFoundError:
-    print("❌ Error: No se encontró el archivo CSV.")
-    print("💡 Sugerencia: Sube el archivo a Colab o verifica la ruta.")
-    print("   Puedes usar: files.upload() para subir archivos")
-    # Código para subir archivos en Colab
-    from google.colab import files
-    uploaded = files.upload()
-    filename = list(uploaded.keys())[0]
-    df = pd.read_csv(filename)
+    raise FileNotFoundError("❌ No se encontró auto-mpg.csv. Sube el archivo al entorno.")
 
-# 2. EXPLORACIÓN INICIAL DE DATOS
-print(f"\n📋 Información del dataset:")
+# ======================================================
+# 2. EXPLORACIÓN INICIAL
+# ======================================================
+print(f"\n📋 Información inicial:")
 print(f"   • Dimensiones: {df.shape}")
 print(f"   • Columnas: {list(df.columns)}")
 
-print(f"\n🔍 Primeras 5 filas:")
+print("\nPrimeras 5 filas:")
 print(df.head())
 
-print(f"\n📈 Información estadística:")
-print(df.describe())
-
-print(f"\n🔍 Valores nulos por columna:")
-print(df.isnull().sum())
-
-print(f"\n📊 Tipos de datos:")
+print("\nTipos de datos:")
 print(df.dtypes)
 
-# 3. ANÁLISIS EXPLORATORIO
-print("\n📊 Realizando análisis exploratorio...")
+print("\nValores nulos por columna:")
+print(df.isnull().sum())
 
-# Crear figura con subplots
-fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+# ======================================================
+# 3. LIMPIEZA DE DATOS
+# ======================================================
+# Eliminar columna "car name" si existe (texto irrelevante como ID)
+if "car name" in df.columns:
+    df.drop(columns=["car name"], inplace=True)
+    print("\n🗑️ Columna 'car name' eliminada")
 
-# Gráfico 1: Distribución de retrasos (si existe columna de delay)
-delay_columns = [col for col in df.columns if 'delay' in col.lower() or 'late' in col.lower()]
-if delay_columns:
-    target_col = delay_columns[0]
-    axes[0, 0].hist(df[target_col].dropna(), bins=50, alpha=0.7, color='skyblue')
-    axes[0, 0].set_title(f'Distribución de {target_col}')
-    axes[0, 0].set_xlabel(target_col)
-    axes[0, 0].set_ylabel('Frecuencia')
+# Reemplazar valores faltantes en horsepower (en dataset original aparecen como '?')
+if df['horsepower'].dtype == object:
+    df['horsepower'] = pd.to_numeric(df['horsepower'], errors='coerce')
 
-# Gráfico 2: Matriz de correlación
-numeric_cols = df.select_dtypes(include=[np.number]).columns
-if len(numeric_cols) > 1:
-    corr_matrix = df[numeric_cols].corr()
-    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0, ax=axes[0, 1])
-    axes[0, 1].set_title('Matriz de Correlación')
-
-# Gráfico 3: Boxplot de variables categóricas importantes
-categorical_cols = df.select_dtypes(include=['object']).columns
-if len(categorical_cols) > 0:
-    sample_cat = categorical_cols[0]
-    if len(df[sample_cat].unique()) < 20:  # Solo si no hay demasiadas categorías
-        df.boxplot(column=numeric_cols[0], by=sample_cat, ax=axes[1, 0])
-        axes[1, 0].set_title(f'{numeric_cols[0]} por {sample_cat}')
-
-# Gráfico 4: Scatter plot de dos variables numéricas
-if len(numeric_cols) >= 2:
-    axes[1, 1].scatter(df[numeric_cols[0]], df[numeric_cols[1]], alpha=0.6)
-    axes[1, 1].set_xlabel(numeric_cols[0])
-    axes[1, 1].set_ylabel(numeric_cols[1])
-    axes[1, 1].set_title(f'{numeric_cols[0]} vs {numeric_cols[1]}')
-
-plt.tight_layout()
-plt.show()
-
-# 4. PREPROCESAMIENTO DE DATOS
-print("\n🔧 Preprocesando datos...")
-
-# Crear una copia para el preprocesamiento
-df_processed = df.copy()
-
-# Manejar valores nulos
-print("🧹 Limpiando valores nulos...")
-for col in df_processed.columns:
-    if df_processed[col].dtype == 'object':
-        # Para categóricas, rellenar con la moda
-        df_processed[col].fillna(df_processed[col].mode()[0], inplace=True)
+# Rellenar nulos con mediana
+for col in df.columns:
+    if df[col].dtype == "object":
+        df[col].fillna(df[col].mode()[0], inplace=True)
     else:
-        # Para numéricas, rellenar con la mediana
-        df_processed[col].fillna(df_processed[col].median(), inplace=True)
+        df[col].fillna(df[col].median(), inplace=True)
 
-# Codificar variables categóricas
-print("🔢 Codificando variables categóricas...")
+# ======================================================
+# 4. CODIFICACIÓN DE VARIABLES CATEGÓRICAS
+# ======================================================
+print("\n🔢 Codificando variables categóricas...")
 label_encoders = {}
-for col in df_processed.select_dtypes(include=['object']).columns:
+for col in df.select_dtypes(include=["object"]).columns:
     le = LabelEncoder()
-    df_processed[col] = le.fit_transform(df_processed[col].astype(str))
+    df[col] = le.fit_transform(df[col].astype(str))
     label_encoders[col] = le
-    print(f"   • {col}: {len(le.classes_)} categorías únicas")
+    print(f"   • {col}: {len(le.classes_)} categorías")
 
-# 5. DEFINIR VARIABLES PREDICTORAS Y TARGET
-print("\n🎯 Definiendo variables...")
+# ======================================================
+# 5. DEFINIR TARGET Y SELECCIONAR FEATURES RELEVANTES
+# ======================================================
+target_column = "mpg"
+print(f"\n🎯 Variable objetivo: {target_column}")
 
-# Excluir columna 'id' si existe
-exclude_cols = ['id']
+# Selección de features más correlacionadas con mpg
+correlations = df.corr()[target_column].abs().sort_values(ascending=False)
+top_features = correlations.index[1:8]  # Top 7 más correlacionadas
+print("🔝 Variables más correlacionadas seleccionadas:", list(top_features))
 
-# Intentar identificar automáticamente la variable objetivo
-possible_targets = [col for col in df_processed.columns
-                   if any(keyword in col.lower() for keyword in
-                         ['delay', 'late', 'target', 'label', 'y'])]
+X = df[top_features]
+y = df[target_column]
 
-if possible_targets:
-    target_column = possible_targets[0]
-    print(f"   • Variable objetivo detectada: {target_column}")
-else:
-    # Si no se encuentra automáticamente, usar la última columna
-    target_column = df_processed.columns[-1]
-    print(f"   • Usando última columna como objetivo: {target_column}")
-
-# Definir X (características) e y (objetivo), excluyendo columnas innecesarias
-X = df_processed.drop(columns=[target_column] + [col for col in exclude_cols if col in df_processed.columns])
-y = df_processed[target_column]
-
-print(f"   • Características (X): {X.shape[1]} variables")
-print(f"   • Variable objetivo (y): {target_column}")
-print(f"   • Características incluidas: {list(X.columns)}")
-
-# 6. DIVIDIR DATOS EN ENTRENAMIENTO Y PRUEBA
-print("\n📊 Dividiendo datos...")
+# ======================================================
+# 6. DIVISIÓN DE DATOS Y ESCALADO
+# ======================================================
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-print(f"   • Datos de entrenamiento: {X_train.shape[0]} muestras")
-print(f"   • Datos de prueba: {X_test.shape[0]} muestras")
 
-# 7. ESCALAR LAS CARACTERÍSTICAS
-print("\n⚖️ Escalando características...")
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
-# 8. ENTRENAR EL MODELO DE REGRESIÓN LINEAL
-print("\n🤖 Entrenando modelo de Regresión Lineal...")
+# ======================================================
+# 7. ENTRENAMIENTO DEL MODELO
+# ======================================================
 model = LinearRegression()
 model.fit(X_train_scaled, y_train)
-print("✅ Modelo entrenado exitosamente!")
+print("\n🤖 Modelo entrenado exitosamente!")
 
-# 9. HACER PREDICCIONES
-print("\n🔮 Realizando predicciones...")
+# ======================================================
+# 8. PREDICCIONES Y MÉTRICAS
+# ======================================================
 y_train_pred = model.predict(X_train_scaled)
 y_test_pred = model.predict(X_test_scaled)
 
-# 10. EVALUAR EL MODELO
-print("\n📊 Evaluación del modelo:")
-print("=" * 30)
-
-# Métricas de entrenamiento
 train_mse = mean_squared_error(y_train, y_train_pred)
 train_rmse = np.sqrt(train_mse)
 train_mae = mean_absolute_error(y_train, y_train_pred)
 train_r2 = r2_score(y_train, y_train_pred)
 
-# Métricas de prueba
 test_mse = mean_squared_error(y_test, y_test_pred)
 test_rmse = np.sqrt(test_mse)
 test_mae = mean_absolute_error(y_test, y_test_pred)
 test_r2 = r2_score(y_test, y_test_pred)
 
-print(f"📈 DATOS DE ENTRENAMIENTO:")
-print(f"   • R² Score: {train_r2:.4f}")
-print(f"   • RMSE: {train_rmse:.4f}")
-print(f"   • MAE: {train_mae:.4f}")
-print(f"   • MSE: {train_mse:.4f}")
+print("\n📊 Evaluación del modelo:")
+print(f"📈 Entrenamiento -> R²={train_r2:.3f}, RMSE={train_rmse:.3f}, MAE={train_mae:.3f}")
+print(f"📊 Prueba        -> R²={test_r2:.3f}, RMSE={test_rmse:.3f}, MAE={test_mae:.3f}")
 
-print(f"\n📊 DATOS DE PRUEBA:")
-print(f"   • R² Score: {test_r2:.4f}")
-print(f"   • RMSE: {test_rmse:.4f}")
-print(f"   • MAE: {test_mae:.4f}")
-print(f"   • MSE: {test_mse:.4f}")
+# ======================================================
+# 9. VISUALIZACIÓN RESULTADOS
+# ======================================================
+plt.figure(figsize=(8,6))
+plt.scatter(y_test, y_test_pred, alpha=0.6, color="blue")
+plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], "r--", lw=2)
+plt.xlabel("Valores Reales (mpg)")
+plt.ylabel("Predicciones (mpg)")
+plt.title(f"Predicciones vs Reales (Prueba) | R² = {test_r2:.3f}")
+plt.show()
 
-# 11. VISUALIZAR RESULTADOS
-print("\n📊 Generando visualizaciones...")
+# ======================================================
+# 10. IMPORTANCIA DE FEATURES
+# ======================================================
+coef_df = pd.DataFrame({
+    "Feature": top_features,
+    "Coeficiente": model.coef_,
+    "Importancia_Abs": np.abs(model.coef_)
+}).sort_values("Importancia_Abs", ascending=False)
 
-fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+print("\n🎯 Importancia de características:")
+print(coef_df.head(10))
 
-# Gráfico 1: Valores reales vs predicciones (entrenamiento)
-axes[0, 0].scatter(y_train, y_train_pred, alpha=0.6, color='blue')
-axes[0, 0].plot([y_train.min(), y_train.max()], [y_train.min(), y_train.max()], 'r--', lw=2)
-axes[0, 0].set_xlabel('Valores Reales')
-axes[0, 0].set_ylabel('Predicciones')
-axes[0, 0].set_title(f'Entrenamiento: Real vs Predicción (R² = {train_r2:.3f})')
-
-# Gráfico 2: Valores reales vs predicciones (prueba)
-axes[0, 1].scatter(y_test, y_test_pred, alpha=0.6, color='green')
-axes[0, 1].plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--', lw=2)
-axes[0, 1].set_xlabel('Valores Reales')
-axes[0, 1].set_ylabel('Predicciones')
-axes[0, 1].set_title(f'Prueba: Real vs Predicción (R² = {test_r2:.3f})')
-
-# Gráfico 3: Residuos (entrenamiento)
-train_residuals = y_train - y_train_pred
-axes[1, 0].scatter(y_train_pred, train_residuals, alpha=0.6, color='blue')
-axes[1, 0].axhline(y=0, color='r', linestyle='--')
-axes[1, 0].set_xlabel('Predicciones')
-axes[1, 0].set_ylabel('Residuos')
-axes[1, 0].set_title('Residuos - Entrenamiento')
-
-# Gráfico 4: Residuos (prueba)
-test_residuals = y_test - y_test_pred
-axes[1, 1].scatter(y_test_pred, test_residuals, alpha=0.6, color='green')
-axes[1, 1].axhline(y=0, color='r', linestyle='--')
-axes[1, 1].set_xlabel('Predicciones')
-axes[1, 1].set_ylabel('Residuos')
-axes[1, 1].set_title('Residuos - Prueba')
-
+plt.figure(figsize=(10,8))
+sns.barplot(data=coef_df.head(10), x="Coeficiente", y="Feature", color="skyblue")
+plt.title("Top Features más influyentes en el modelo (Auto MPG)")
 plt.tight_layout()
 plt.show()
 
-# 12. IMPORTANCIA DE LAS CARACTERÍSTICAS
-print("\n🎯 Importancia de las características:")
-print("=" * 40)
-
-feature_importance = pd.DataFrame({
-    'Característica': X.columns,
-    'Coeficiente': model.coef_,
-    'Importancia_Abs': np.abs(model.coef_)
-}).sort_values('Importancia_Abs', ascending=False)
-
-print(feature_importance)
-
-# Visualizar importancia de características
-plt.figure(figsize=(10, 8))
-top_features = feature_importance.head(10)
-plt.barh(top_features['Característica'], top_features['Coeficiente'])
-plt.xlabel('Coeficiente')
-plt.title('Top 10 Características más Importantes')
-plt.gca().invert_yaxis()
-plt.tight_layout()
-plt.show()
-
-# 13. EJEMPLOS DE PREDICCIÓN
-print("\n🔮 Ejemplos de predicciones:")
-print("=" * 30)
-
-# Mostrar algunas predicciones de ejemplo
-example_indices = np.random.choice(len(y_test), 5, replace=False)
-for i, idx in enumerate(example_indices):
-    real_value = y_test.iloc[idx]
-    predicted_value = y_test_pred[idx]
-    print(f"Ejemplo {i+1}:")
-    print(f"   • Valor real: {real_value:.2f}")
-    print(f"   • Predicción: {predicted_value:.2f}")
-    print(f"   • Error: {abs(real_value - predicted_value):.2f}")
-    print()
-
-# 14. RESUMEN FINAL
+# ======================================================
+# 11. RESUMEN FINAL
+# ======================================================
 print("\n📋 RESUMEN FINAL:")
-print("=" * 20)
-print(f"✅ Modelo entrenado exitosamente")
-print(f"📊 R² Score en prueba: {test_r2:.4f}")
-print(f"📉 RMSE en prueba: {test_rmse:.4f}")
-print(f"🎯 El modelo explica el {test_r2*100:.1f}% de la varianza en los datos de prueba")
-
+print(f"✅ Modelo entrenado con Regresión Lineal")
+print(f"📊 R² Score en prueba: {test_r2:.3f} ({test_r2*100:.1f}% de varianza explicada)")
 if test_r2 > 0.7:
-    print("🎉 ¡Excelente rendimiento del modelo!")
+    print("🎉 Excelente rendimiento")
 elif test_r2 > 0.5:
-    print("👍 Buen rendimiento del modelo")
-elif test_r2 > 0.3:
-    print("⚠️ Rendimiento moderado - considera más características o diferente modelo")
+    print("👍 Buen rendimiento")
 else:
-    print("❌ Rendimiento bajo - revisa los datos y considera otros enfoques")
-
-print(f"\n💡 Característica más importante: {feature_importance.iloc[0]['Característica']}")
-print(f"🔧 Total de características usadas: {len(X.columns)}")
-
-print("\n🚀 ¡Análisis completado!")
+    print("⚠️ Rendimiento bajo, considera más features o modelo distinto")
